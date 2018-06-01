@@ -1,0 +1,172 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 26
+    defaultConfig {
+        applicationId "com.share.autopackage"
+        minSdkVersion 15
+        targetSdkVersion 26
+        versionCode 1
+        versionName "1.0"
+        //配置dimension
+        flavorDimensions "pack"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        //占位符
+        manifestPlaceholders = [UMENG_CHANNEL: "example"]
+        //NDK的配置
+        ndk { abiFilters "armeabi", "armeabi-v7a", "x86", "mips" }
+    }
+    /*多渠道的一些配置 */
+    //关于多渠道打包的另一种配置可以参考另一篇文章：https://www.jianshu.com/p/332525b09a88
+    productFlavors {
+        tencent {
+            applicationId "com.example.administrator.tcsharefood"
+            dimension "pack"
+            manifestPlaceholders = [appName: "tencent"]
+        }
+        baidu {
+            applicationId "com.example.administrator.bdsharefood"
+            dimension "pack"
+            manifestPlaceholders = [appName: "baidu"]
+        }
+    }
+
+    //签名文件配置: 这是第一种写法：
+/*    signingConfigs {
+        debug {
+            storeFile file('../sharepack.jks')
+            storePassword "123456"
+            keyAlias "sharepack"
+            keyPassword "123456"
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+        release {
+            storeFile file('../sharepack.jks')
+            storePassword "123456"
+            keyAlias "sharepack"
+            keyPassword "123456"
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }*/
+
+//  这是签名的第二种写法  调用getSigningProperties方法里面的函数,
+//  通过读取里面的配置文件进行操作：
+//
+
+    signingConfigs {
+        debug {
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+
+        release {
+            storeFile
+            storePassword
+            keyAlias
+            keyPassword
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
+    getSigningProperties()
+
+    //自定义输出包名的设置
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            // 输出apk名称为sharev1.0_tencent.apk
+            def fileName = "share${defaultConfig.versionName}_${variant.productFlavors[0].name}.apk"
+            outputFileName = fileName
+        }
+    }
+
+    //其他设置
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            debuggable true  //启用debug的buildType配置
+        }
+        //输出类型
+        applicationVariants.all {
+            //判断是release还是debug版本
+            def buildType = it.buildType.name
+           //获取当前时间的"YYYY-MM-dd"格式。
+            def createTime = new Date().format("YYYY-MM-dd", TimeZone.getTimeZone("GMT+08:00"))
+            //如果是正式包,将其输入到指定文件夹
+            if (buildType == "release") {
+                it.getPackageApplication().outputDirectory = new File('C:\\out_apk'+ "/${it.productFlavors[0].applicationId}/${createTime}")
+            }
+        }
+    }
+
+}
+
+//读取签名配置文件
+def getSigningProperties() {
+
+    def propFile = file('signing.properties')
+    if (propFile.canRead()) {
+        def Properties props = new Properties()
+        props.load(new FileInputStream(propFile))
+        if (props != null && props.containsKey('STORE_FILE') && props.containsKey('STORE_PASSWORD') &&
+                props.containsKey('KEY_ALIAS') && props.containsKey('KEY_PASSWORD')) {
+
+            android.signingConfigs.release.storeFile = file(props['STORE_FILE'])
+            android.signingConfigs.release.storePassword = props['STORE_PASSWORD']
+            android.signingConfigs.release.keyAlias = props['KEY_ALIAS']
+            android.signingConfigs.release.keyPassword = props['KEY_PASSWORD']
+
+        } else {
+
+            println 'signing.properties found but some entries are missing'
+            android.buildTypes.release.signingConfig = null
+        }
+    } else {
+        println 'signing.properties not found'
+        android.buildTypes.release.signingConfig = null
+    }
+}
+
+//获取版本号：
+def getVersionCode() {
+    def versionFile = file('version.properties')
+    if (versionFile.canRead()) {
+        def Properties versionProps = new Properties()
+        versionProps.load(new FileInputStream(versionFile))
+        def versionCode = versionProps['VERSION_CODE'].toInteger()
+        def runTasks = gradle.startParameter.taskNames
+        //仅在assembleRelease任务是增加版本号
+        if ('assembleRelease' in runTasks) {
+            versionProps['VERSION_CODE'] = (++versionCode).toString()
+            versionProps.store(versionFile.newWriter(), null)
+        }
+        return versionCode
+    } else {
+        throw new GradleException("Could not find version.properties!")
+    }
+}
+
+//获取当前时间
+def getCurrentTime() {
+    return new Date().format("yyyy-MM-dd", TimeZone.getTimeZone("UTC"))
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:appcompat-v7:26.1.0'
+    implementation 'com.android.support.constraint:constraint-layout:1.1.0'
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+
+}
+
+configurations.all {
+    resolutionStrategy.force 'com.android.support:support-annotations:26.1.0'
+}
